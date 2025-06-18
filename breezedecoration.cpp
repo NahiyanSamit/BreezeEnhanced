@@ -259,10 +259,13 @@ namespace Breeze
         auto s = settings();
         const auto w = window();
         const bool maximized = isMaximized();
-        const qreal width =  maximized ? w->width() : w->width() - 2*s->largeSpacing()*Metrics::TitleBar_SideMargin;
-        const qreal height = (maximized || isTopEdge()) ? borderTop() : borderTop() - s->smallSpacing()*Metrics::TitleBar_TopMargin;
-        const qreal x = maximized ? 0 : s->largeSpacing()*Metrics::TitleBar_SideMargin;
-        const qreal y = (maximized || isTopEdge()) ? 0 : s->smallSpacing()*Metrics::TitleBar_TopMargin;
+        
+        // For vertical titlebar, swap width and height logic
+        const qreal height = maximized ? w->height() : w->height() - 2*s->largeSpacing()*Metrics::TitleBar_SideMargin;
+        const qreal width = (maximized || isLeftEdge()) ? borderLeft() : borderLeft() - s->smallSpacing()*Metrics::TitleBar_TopMargin;
+        const qreal x = (maximized || isLeftEdge()) ? 0 : s->smallSpacing()*Metrics::TitleBar_TopMargin;
+        const qreal y = maximized ? 0 : s->largeSpacing()*Metrics::TitleBar_SideMargin;
+        
         setTitleBar(QRectF(x, y, width, height));
     }
 
@@ -353,27 +356,24 @@ namespace Breeze
         const auto w = window();
         auto s = settings();
 
-        // left, right and bottom borders
-        const qreal left = isLeftEdge() ? 0 : borderSize(false, scale);
-        const qreal right = isRightEdge() ? 0 : borderSize(false, scale);
-        const qreal bottom = (w->isShaded() || isBottomEdge()) ? 0 : borderSize(true, scale);
+        // For vertical titlebar, left border becomes the main border
+        const qreal top = isTopEdge() ? 0 : borderSize(false, scale);
+        const qreal bottom = isBottomEdge() ? 0 : borderSize(false, scale);
+        const qreal right = (w->isShaded() || isRightEdge()) ? 0 : borderSize(true, scale);
 
-        qreal top = 0;
+        qreal left = 0;
         if (hideTitleBar())
-            top = bottom;
+            left = right;
         else
         {
             QFont f; f.fromString(m_internalSettings->titleBarFont());
             QFontMetricsF fm(f);
-            top += KDecoration3::snapToPixelGrid(std::max(fm.height(), static_cast<qreal>(buttonSize())), scale);
+            left += KDecoration3::snapToPixelGrid(std::max(fm.height(), static_cast<qreal>(buttonSize())), scale);
 
-            // padding below
-            // extra pixel is used for the active window outline (but not in the shaded state)
+            // padding
             const int baseSize = s->smallSpacing();
-            top += KDecoration3::snapToPixelGrid(baseSize * Metrics::TitleBar_BottomMargin + (w->isShaded() ? 0 : 1), scale);
-
-            // padding above
-            top += KDecoration3::snapToPixelGrid(baseSize * Metrics::TitleBar_TopMargin, scale);
+            left += KDecoration3::snapToPixelGrid(baseSize * Metrics::TitleBar_BottomMargin + (w->isShaded() ? 0 : 1), scale);
+            left += KDecoration3::snapToPixelGrid(baseSize * Metrics::TitleBar_TopMargin, scale);
         }
         return QMarginsF(left, top, right, bottom);
     }
@@ -553,73 +553,63 @@ namespace Breeze
     {
         const auto s = settings();
 
-        // adjust button position
+        // Adjust button position for vertical titlebar
         const auto buttonList = m_leftButtons->buttons() + m_rightButtons->buttons();
         for (KDecoration3::DecorationButton *button : buttonList)
         {
             auto btn = static_cast<Button *>(button);
-
-            const int verticalOffset = (isTopEdge() ? s->smallSpacing() * Metrics::TitleBar_TopMargin : 0);
-
+            const int horizontalOffset = (isLeftEdge() ? s->smallSpacing() * Metrics::TitleBar_TopMargin : 0);
             const QSizeF preferredSize = btn->preferredSize();
-            const int bHeight = preferredSize.height() + verticalOffset;
-            const int bWidth = preferredSize.width();
+            const int bWidth = preferredSize.width() + horizontalOffset;
+            const int bHeight = preferredSize.height();
 
             btn->setGeometry(QRectF(QPoint(0, 0), QSizeF(bWidth, bHeight)));
-            btn->setPadding(QMargins(0, verticalOffset, 0, 0));
+            btn->setPadding(QMargins(horizontalOffset, 0, 0, 0));
         }
 
-        // left buttons
+        // Position buttons vertically on the left side
         if (!m_leftButtons->buttons().isEmpty())
         {
-            // spacing (use our own spacing instead of s->smallSpacing()*Metrics::TitleBar_ButtonSpacing)
             m_leftButtons->setSpacing(m_internalSettings->buttonSpacing());
-
-            // padding
-            const int vPadding = isTopEdge() ? 0 : s->smallSpacing() * Metrics::TitleBar_TopMargin;
-            const int hPadding = s->smallSpacing() * Metrics::TitleBar_SideMargin;
-            if (isLeftEdge())
+            const int hPadding = isLeftEdge() ? 0 : s->smallSpacing() * Metrics::TitleBar_TopMargin;
+            const int vPadding = s->smallSpacing() * Metrics::TitleBar_SideMargin;
+            
+            if (isTopEdge())
             {
-                // add offsets on the side buttons, to preserve padding, but satisfy Fitts law
                 auto button = static_cast<Button *>(m_leftButtons->buttons().front());
-
                 QRectF geometry = button->geometry();
-                geometry.adjust(-hPadding, 0, 0, 0);
+                geometry.adjust(0, -vPadding, 0, 0);
                 button->setGeometry(geometry);
-                button->setLeftPadding(hPadding);
-
-                m_leftButtons->setPos(QPointF(0, vPadding));
+                // Fix: Use QMargins instead of int
+                button->setPadding(QMargins(0, vPadding, 0, 0));
+                m_leftButtons->setPos(QPointF(hPadding, 0));
             }
             else
-                m_leftButtons->setPos(QPointF(hPadding + borderLeft(), vPadding));
+                m_leftButtons->setPos(QPointF(hPadding, vPadding));
         }
 
         // right buttons
         if (!m_rightButtons->buttons().isEmpty())
         {
-            // spacing (use our own spacing instead of s->smallSpacing()*Metrics::TitleBar_ButtonSpacing)
             m_rightButtons->setSpacing(m_internalSettings->buttonSpacing());
-
-            // padding
-            const int vPadding = isTopEdge() ? 0 : s->smallSpacing() * Metrics::TitleBar_TopMargin;
-            const int hPadding = s->smallSpacing() * Metrics::TitleBar_SideMargin;
-            if (isRightEdge())
+            const int hPadding = isLeftEdge() ? 0 : s->smallSpacing() * Metrics::TitleBar_TopMargin;
+            const int vPadding = s->smallSpacing() * Metrics::TitleBar_SideMargin;
+            
+            if (isBottomEdge())
             {
                 auto button = static_cast<Button *>(m_rightButtons->buttons().back());
-
                 QRectF geometry = button->geometry();
-                geometry.adjust(0, 0, hPadding, 0);
+                geometry.adjust(0, 0, 0, vPadding);
                 button->setGeometry(geometry);
-                button->setRightPadding(hPadding);
-
-                m_rightButtons->setPos(QPointF(size().width() - m_rightButtons->geometry().width(), vPadding));
+                // Fix: Use QMargins instead of int
+                button->setPadding(QMargins(0, 0, 0, vPadding));
+                m_rightButtons->setPos(QPointF(hPadding, size().height() - m_rightButtons->geometry().height()));
             }
             else
-                m_rightButtons->setPos(QPointF(size().width() - m_rightButtons->geometry().width() - hPadding - borderRight(), vPadding));
+                m_rightButtons->setPos(QPointF(hPadding, size().height() - m_rightButtons->geometry().height() - vPadding));
         }
 
         update();
-
     }
 
     //________________________________________________________________
@@ -674,24 +664,26 @@ namespace Breeze
     void Decoration::paintTitleBar(QPainter *painter, const QRectF &repaintRegion)
     {
         const auto w = window();
-        const QRectF titleRect(QPointF(0, 0), QSizeF(size().width(), borderTop()));
+        // Change titleRect to be vertical (left side)
+        const QRectF titleRect(QPointF(0, 0), QSizeF(borderLeft(), size().height()));
 
         if (!titleRect.intersects(repaintRegion)) return;
 
         painter->save();
         painter->setPen(Qt::NoPen);
 
-        // render a linear gradient on title area and draw a light border at the top
+        // Render gradient - change direction for vertical
         if (m_internalSettings->drawBackgroundGradient() && !flatTitleBar())
         {
             QColor titleBarColor(this->titleBarColor());
             titleBarColor.setAlpha(titleBarAlpha());
 
-            QLinearGradient gradient(0, 0, 0, titleRect.height());
+            // Vertical gradient (left to right instead of top to bottom)
+            QLinearGradient gradient(0, 0, titleRect.width(), 0);
             QColor lightCol(titleBarColor.lighter(130 + m_internalSettings->backgroundGradientIntensity()));
             gradient.setColorAt(0.0, lightCol);
-            gradient.setColorAt(0.99 / titleRect.height(), lightCol);
-            gradient.setColorAt(1.0 / titleRect.height(),
+            gradient.setColorAt(0.99 / titleRect.width(), lightCol);
+            gradient.setColorAt(1.0 / titleRect.width(),
                                 titleBarColor.lighter(100 + m_internalSettings->backgroundGradientIntensity()));
             gradient.setColorAt(1.0, titleBarColor);
 
@@ -702,16 +694,17 @@ namespace Breeze
             QColor titleBarColor(this->titleBarColor());
             titleBarColor.setAlpha(titleBarAlpha());
 
-            QLinearGradient gradient(0, 0, 0, titleRect.height());
+            QLinearGradient gradient(0, 0, titleRect.width(), 0);
             QColor lightCol(titleBarColor.lighter(130));
             gradient.setColorAt(0.0, lightCol);
-            gradient.setColorAt(0.99 / titleRect.height(), lightCol);
-            gradient.setColorAt(1.0 / titleRect.height(), titleBarColor);
+            gradient.setColorAt(0.99 / titleRect.width(), lightCol);
+            gradient.setColorAt(1.0 / titleRect.width(), titleBarColor);
             gradient.setColorAt(1.0, titleBarColor);
 
             painter->setBrush(gradient);
         }
 
+        // Draw the titlebar rectangle
         auto s = settings();
         if (isMaximized() || !s->isAlphaChannelSupported())
         {
@@ -724,28 +717,33 @@ namespace Breeze
         else
         {
             painter->setClipRect(titleRect, Qt::IntersectClip);
-            // the rect is made a little bit larger to be able to clip away the rounded corners at the bottom and sides
-            painter->drawRoundedRect(titleRect.adjusted(isLeftEdge() ? -m_scaledCornerRadius :0,
-                                                        isTopEdge() ? -m_scaledCornerRadius :0,
-                                                        isRightEdge() ? m_scaledCornerRadius :0,
-                                                        m_scaledCornerRadius),
+            painter->drawRoundedRect(titleRect.adjusted(isLeftEdge() ? -m_scaledCornerRadius : 0,
+                                                        isTopEdge() ? -m_scaledCornerRadius : 0,
+                                                        m_scaledCornerRadius,
+                                                        isBottomEdge() ? m_scaledCornerRadius : 0),
                                      m_scaledCornerRadius, m_scaledCornerRadius);
-
         }
 
         painter->restore();
 
-        // draw caption
+        // Draw caption vertically
         QFont f; f.fromString(m_internalSettings->titleBarFont());
-        // KDE needs this FIXME: Why?
         QFontDatabase fd; f.setStyleName(fd.styleString(f));
         painter->setFont(f);
         painter->setPen(fontColor());
+        
         const auto cR = captionRect();
-        const QString caption = painter->fontMetrics().elidedText(w->caption(), Qt::ElideMiddle, cR.first.width());
-        painter->drawText(cR.first, cR.second | Qt::TextSingleLine, caption);
+        const QString caption = painter->fontMetrics().elidedText(w->caption(), Qt::ElideMiddle, cR.first.height());
+        
+        // Rotate painter for vertical text
+        painter->save();
+        painter->translate(cR.first.center());
+        painter->rotate(-90);
+        QRectF rotatedRect(-cR.first.height()/2, -cR.first.width()/2, cR.first.height(), cR.first.width());
+        painter->drawText(rotatedRect, Qt::AlignCenter | Qt::TextSingleLine, caption);
+        painter->restore();
 
-        // draw all buttons
+        // Draw buttons
         m_leftButtons->paint(painter, repaintRegion);
         m_rightButtons->paint(painter, repaintRegion);
     }
@@ -780,60 +778,24 @@ namespace Breeze
     QPair<QRectF, Qt::Alignment> Decoration::captionRect() const
     {
         if (hideTitleBar()) return qMakePair(QRectF(), Qt::AlignCenter);
-        else {
-
-            const qreal extraTitleMargin = m_internalSettings->extraTitleMargin();
-            const auto w = window();
-            const qreal leftOffset = m_leftButtons->buttons().isEmpty() ?
-                Metrics::TitleBar_SideMargin*settings()->smallSpacing() + extraTitleMargin :
-                m_leftButtons->geometry().x() + m_leftButtons->geometry().width() + Metrics::TitleBar_SideMargin*settings()->smallSpacing() + extraTitleMargin;
-
-            const qreal rightOffset = m_rightButtons->buttons().isEmpty() ?
-                Metrics::TitleBar_SideMargin*settings()->smallSpacing() + extraTitleMargin:
-                size().width() - m_rightButtons->geometry().x() + Metrics::TitleBar_SideMargin*settings()->smallSpacing() + extraTitleMargin;
-
-            const qreal yOffset = settings()->smallSpacing()*Metrics::TitleBar_TopMargin;
-            const QRectF maxRect(leftOffset, yOffset, size().width() - leftOffset - rightOffset, captionHeight());
-
-            switch (m_internalSettings->titleAlignment())
-            {
-                case InternalSettings::AlignLeft:
-                return qMakePair(maxRect, Qt::AlignVCenter|Qt::AlignLeft);
-
-                case InternalSettings::AlignRight:
-                return qMakePair(maxRect, Qt::AlignVCenter|Qt::AlignRight);
-
-                case InternalSettings::AlignCenter:
-                return qMakePair(maxRect, Qt::AlignCenter);
-
-                default:
-                case InternalSettings::AlignCenterFullWidth:
-                {
-
-                    // full caption rect
-                    const QRectF fullRect = QRectF(0, yOffset, size().width(), captionHeight());
-                    QFont f; f.fromString(m_internalSettings->titleBarFont());
-                    QFontMetricsF fm(f);
-                    QRectF boundingRect(fm.boundingRect(w->caption()));
-
-                    // text bounding rect
-                    boundingRect.setTop(yOffset);
-                    boundingRect.setHeight(captionHeight());
-                    boundingRect.moveLeft((size().width() - boundingRect.width())/2);
-
-                    if (boundingRect.left() < leftOffset)
-                        return qMakePair(maxRect, Qt::AlignVCenter|Qt::AlignLeft);
-                    else if (boundingRect.right() > size().width() - rightOffset)
-                        return qMakePair(maxRect, Qt::AlignVCenter|Qt::AlignRight);
-                    else
-                        return qMakePair(fullRect, Qt::AlignCenter);
-
-                }
-
-            }
-
-        }
-
+        
+        const qreal extraTitleMargin = m_internalSettings->extraTitleMargin();
+        const auto w = window();
+        
+        // For vertical titlebar, adjust the caption rectangle
+        const qreal leftOffset = settings()->smallSpacing() * Metrics::TitleBar_TopMargin;
+        const qreal topOffset = m_leftButtons->buttons().isEmpty() ?
+            Metrics::TitleBar_SideMargin * settings()->smallSpacing() + extraTitleMargin :
+            m_leftButtons->geometry().y() + m_leftButtons->geometry().height() + Metrics::TitleBar_SideMargin * settings()->smallSpacing() + extraTitleMargin;
+        
+        const qreal bottomOffset = m_rightButtons->buttons().isEmpty() ?
+            Metrics::TitleBar_SideMargin * settings()->smallSpacing() + extraTitleMargin :
+            size().height() - m_rightButtons->geometry().y() + Metrics::TitleBar_SideMargin * settings()->smallSpacing() + extraTitleMargin;
+        
+        const QRectF maxRect(leftOffset, topOffset, borderLeft() - leftOffset, size().height() - topOffset - bottomOffset);
+        
+        // Return center alignment for vertical text
+        return qMakePair(maxRect, Qt::AlignCenter);
     }
 
     //________________________________________________________________
